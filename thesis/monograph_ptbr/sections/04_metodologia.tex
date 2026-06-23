@@ -1,0 +1,178 @@
+\section{Metodologia}
+
+\subsection{Contrato experimental e estrutura geral}
+
+A comparação adota um único \textit{host} físico, um único artefato de
+modelo verificado por \textit{hash} SHA-256 e um único contrato de
+requisições HTTP, mantendo constante tudo que não seja a plataforma de
+\textit{serving} ou o eixo experimental em estudo. Os dois pipelines
+(FastAPI com ONNX Runtime e BentoML com \textit{adaptive batching})
+expõem o mesmo \textit{endpoint} \texttt{POST /predict} que recebe um
+\textit{JSON} com a chave \texttt{features} contendo um vetor bidimensional
+de \texttt{float32} de forma $[N, 28]$ e retorna um vetor de probabilidades
+$[N, 2]$. Ambos verificam o \textit{hash} do artefato ONNX no \textit{startup}
+e expõem um \textit{endpoint} \texttt{/version} que reporta os
+hiperparâmetros de paralelismo efetivamente aplicados; esse \textit{payload}
+é registrado por célula da varredura para evitar atribuição errônea de
+resultados.
+
+O experimento se divide em três camadas de medição com finalidades
+complementares: a primeira isola o custo intrínseco da inferência, a segunda
+isola o sobrecusto da plataforma sem contêiner, e a terceira mede a entrega
+ponta a ponta sob o contrato real de \textit{deployment}.
+
+\subsection{Decomposição em três camadas}
+
+\begin{table}[H]
+\centering
+\caption{As três camadas de medição.}
+\label{tab:layers}
+\begin{tabularx}{\textwidth}{l X X}
+\toprule
+Camada & O que isola & Como mede \\
+\midrule
+L1 & Custo intrínseco da inferência ONNX & Laço apertado em Python, 10\,000 iterações sobre \texttt{session.run}, sem HTTP, com \textit{cache} quente e \textit{ndarray} pré-construído. \\
+L2 & Sobrecusto do \textit{framework} e do HTTP no \textit{host} & Servidor executado nativamente no \textit{host} com \texttt{taskset -c 0,1}; Vegeta hospedado nas \textit{cores} 2,3 ataca diretamente o \textit{loopback}. \\
+L3 & \textit{Deployment} completo conteinerizado & Servidor em Docker com \texttt{--cpuset-cpus=0,1 --cpus=2 --memory=2g}; Vegeta nativo nas \textit{cores} 2,3. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+A atribuição de sobrecusto é direta: L1 fornece o piso da inferência, $L2 -
+L1$ representa o sobrecusto do \textit{framework}, do \textit{parsing}
+\textit{JSON}, do despacho assíncrono e do tráfego TCP em \textit{loopback};
+$L3 - L2$ representa o sobrecusto adicional do isolamento do contêiner e do
+mapeamento de portas. Como o gerador de carga é o mesmo (Vegeta) nas três
+camadas, as diferenças entre camadas não são contaminadas pela
+implementação do cliente.
+
+\subsection{Varredura matricial e variantes do BentoML}
+
+A camada L3, que produz o resultado principal, percorre uma matriz
+fatorial de configurações de paralelismo e intensidade de carga.
+
+\begin{table}[H]
+\centering
+\caption{Eixos da varredura matricial L3.}
+\label{tab:matrix}
+\begin{tabularx}{\textwidth}{l X r}
+\toprule
+Eixo & Valores & Cardinalidade \\
+\midrule
+Variante & \texttt{fastapi}, \texttt{bentoml\_lat5}, \texttt{bentoml\_lat50}, \texttt{bentoml\_lat250} & 4 \\
+(\textit{workers}, \textit{threads}) & $(1,1), (1,2), (2,1), (2,2)$ & 4 \\
+RPS alvo & $\{50,\,150,\,350,\,600,\,1000\}$ com aborto precoce na saturação & até 5 \\
+Repetições & 3 réplicas independentes & 3 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+O eixo de variantes do BentoML promove o parâmetro \texttt{max\_latency\_ms}
+de configuração fixa a eixo experimental explícito, depois que a leitura do
+código-fonte do \textit{dispatcher} \cite{bentoml_dispatcher} mostrou que o
+valor inicialmente calibrado (5\,ms) é um prazo rígido inferior ao piso de
+\textit{serving} medido em L2. As variantes \texttt{lat50} e \texttt{lat250}
+adicionam folga de uma e duas ordens de grandeza, respectivamente, permitindo
+separar comportamento arquitetural de artefato de calibração. O parâmetro
+\texttt{max\_batch\_size} é mantido em 16 para todas as variantes a fim de
+isolar o efeito do prazo.
+
+A varredura completa contabilizou 219 células efetivamente executadas, de
+um máximo nominal de 240, com aborto precoce em valores de RPS além da
+saturação observada. Cada célula registra um \textit{JSON} de versão, um
+\textit{JSON} de resumo do Vegeta e o \textit{result.bin} bruto contendo a
+latência e o código HTTP de cada requisição individual.
+
+\subsection{Geração de carga em modelo aberto}
+
+Vegeta \cite{vegeta2024} é configurado em modo de modelo aberto a taxa fixa,
+com \textit{timeout} por requisição de 3 segundos, formato de saída
+binário, e fonte de alvos pré-renderizada a partir de 10\,000 linhas
+amostradas do conjunto de teste. Cada célula recebe 100 requisições de
+aquecimento antes da medição, removendo a influência do regime transitório
+de \textit{startup} do servidor (em especial a fase \texttt{train\_optimizer}
+do \textit{dispatcher} do BentoML) e da inicialização tardia das estruturas
+internas do \textit{tokenizer} e do \textit{thread pool}. A duração nominal
+do ataque é de 45 segundos. Para reduzir efeitos de variabilidade entre
+\textit{containers}, é introduzido um intervalo de quietude de 3 segundos
+entre células consecutivas.
+
+\subsection{Protocolo de pinagem de CPU}
+
+\begin{table}[H]
+\centering
+\caption{Pinagem de CPU por camada.}
+\label{tab:pinning}
+\begin{tabularx}{\textwidth}{l X X}
+\toprule
+Camada & Servidor & Vegeta \\
+\midrule
+L1 & não se aplica & não se aplica \\
+L2 & \texttt{taskset -c 0,1} (host) & nativo, \texttt{taskset -c 2,3} \\
+L3 & Docker \texttt{--cpuset-cpus=0,1 --cpus=2} & nativo, \texttt{taskset -c 2,3} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+A disjunção entre as \textit{cores} do servidor e as do gerador de carga é
+necessária para impedir contaminação cruzada entre a carga injetada e a
+carga inferida. As demais \textit{cores} (4 a 11 no \textit{host} de
+referência) permanecem disponíveis para o \textit{kernel} Linux atender
+demais processos, sem efeito mensurável sobre a medição.
+
+\subsection{Amostragem de utilização de CPU no servidor}
+
+Um subconjunto de 20 células consideradas críticas para o argumento do
+mecanismo é re-executado com amostragem direta de utilização de CPU do
+\textit{container} do servidor, via \texttt{docker stats --no-stream}
+acionado em laço com período efetivo próximo de um segundo. Cada célula
+desse subconjunto, repetida três vezes por 45 segundos, produz uma série
+temporal por execução (cerca de 22 amostras) e seus resumos (média,
+percentil 50, percentil 95 e máximo). O subconjunto cobre todas as
+variantes em configurações próximas à saturação, totalizando 60 execuções
+adicionais; o conjunto principal de 219 células é preservado intacto em
+diretório separado.
+
+\subsection{Procedimentos estatísticos e métrica de comparação}
+
+As métricas reportadas por célula são as medianas entre as três réplicas.
+Acompanhando cada percentil reportado, é computado o intervalo de
+confiança bootstrap percentílico a 95\% sobre as três réplicas, com 1.000
+reamostragens \cite{efron1979}, e o coeficiente de variação
+$\text{CoV} = \sigma/\mu$, usado como indicador de estabilidade entre
+execuções. Os intervalos resultantes são largos em termos absolutos a
+$n = 3$, e as comparações entre pipelines apoiam-se na magnitude da
+diferença observada, frequentemente de ordens de grandeza no P99, mais do
+que na estreitez dos intervalos. Comparações pareadas adicionais entre
+variantes empregam o teste de Mann-Whitney U e o tamanho de efeito de
+Cliff's $\delta$, ambos não-paramétricos e adequados a amostras pequenas.
+
+Para comparar de forma justa um sistema que descarta requisições por prazo
+expirado (BentoML, HTTP 503) contra um sistema que as enfileira como
+latência adicional (FastAPI, código 200 com latência elevada), a métrica
+principal adotada é a vazão útil sob SLA, calculada como
+$\text{goodput@SLA} = N_{\text{ok}}^{<\text{SLA}} / N_{\text{oferecidas}}$,
+onde $N_{\text{ok}}^{<\text{SLA}}$ é o número de respostas 2xx com latência
+menor ou igual ao limiar (50 ou 100\,ms). Os dois modos de falha (503
+imediato e 200 atrasado) são tratados de forma simétrica como falhas
+operacionais idênticas do ponto de vista do consumidor.
+
+\subsection{Ameaças à validade}
+
+Quatro ameaças à validade interna foram identificadas e tratadas. Primeira,
+o agrupamento de conexões HTTP/1.1 com \textit{keep-alive} do Vegeta tende
+a colapsar para uma única conexão TCP sob latência mediana submilissegundo,
+o que efetivamente fixa a carga a um único \textit{worker} do FastAPI sob
+balanceamento por conexão. Esse efeito foi confirmado empiricamente nas
+células do subconjunto de mecanismo e é discutido como limitação na
+Seção~7. Segunda, o \textit{dispatcher} do BentoML possui uma fase de
+\textit{warmup} de cerca de 30 segundos durante a qual o estimador de
+tamanho ótimo de lote estabiliza; o aquecimento de 100 requisições foi
+calibrado para drenar essa fase. Terceira, a migração entre \textit{Vegeta}
+em \textit{Docker} (Windows) e \textit{Vegeta} nativo (WSL2 Linux) altera o
+caminho do \textit{loopback}; os resultados aqui reportados usam o caminho
+nativo, e o conjunto Windows é preservado em diretório separado para
+verificação cruzada. Quarta, o trabalho restringe-se a um \textit{host}
+físico; uma extensão multi-\textit{host} com balanceador de carga real é
+apontada como trabalho futuro.
+

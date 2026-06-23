@@ -1,0 +1,5 @@
+{
+  "max_batch_size": 16,
+  "max_latency_ms": 5,
+  "_note": "calibrated; see calibration_report.md"
+}

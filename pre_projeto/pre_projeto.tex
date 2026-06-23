@@ -1,0 +1,218 @@
+% ==============================================================================
+% Proposta de Trabalho de Graduação — CIn/UFPE
+% Tema: Otimização de Latência de Cauda (P99) em Entrega de ML
+%        para Dados Tabulares
+% ==============================================================================
+\documentclass[12pt,a4paper]{article}
+
+% --- Pacotes essenciais ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{indentfirst}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{csquotes}
+\usepackage[
+  backend=biber,
+  style=numeric-comp,
+  sorting=none
+]{biblatex}
+
+\addbibresource{referencias.bib}
+
+\geometry{
+  top=3cm,
+  bottom=2cm,
+  left=2.5cm,
+  right=2.5cm
+}
+
+\onehalfspacing
+
+% Estilos de seção
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+% Citação como número sobrescrito
+\let\oldcite=\cite
+\renewcommand{\cite}{\supercite}
+
+% ==============================================================================
+% CAPA
+% ==============================================================================
+\begin{document}
+
+\begin{titlepage}
+  \centering
+
+  \includegraphics[width=0.75\textwidth]{Horizontal-Vermelho-Logotipo-CIn-UFPE.png}
+
+  \vspace{1.5cm}
+
+  {\Large\bfseries PROPOSTA DE TRABALHO DE GRADUAÇÃO}
+
+  \vspace{1.0cm}
+
+  {\LARGE\bfseries Otimização de Latência de Cauda (P99) na\\[0.15cm]
+  Entrega de Modelos de Aprendizado de\\[0.15cm]
+  Máquina para Dados Tabulares\par}
+
+  \vspace{1.5cm}
+
+  {\large
+    \textbf{Aluno:} David Ubaldo Mesquita Londres\\[0.3cm]
+    \textbf{Orientador:} Cleber Zanchettin\\[0.3cm]
+    \textbf{Área:} Inteligência Artificial / Aprendizado de Máquina\\[0.3cm]
+    \textbf{Curso:} Ciência da Computação\\[0.3cm]
+  }
+
+  \vspace{0.6cm}
+
+  {\large
+    \textbf{Sugestões para Avaliação:} Flavio Santos / Adriano Lorena\\[0.15cm]
+  }
+
+  \vspace{0.8cm}
+
+  \begin{center}
+    \rule{8cm}{0.4pt}\\[0.15cm]
+    {\large Cleber Zanchettin\\[0.1cm]
+    \textit{Orientador --- Assinatura Digital}}
+  \end{center}
+
+  \vfill
+
+  {\large Recife, Abril de 2026}
+\end{titlepage}
+
+% ==============================================================================
+% RESUMO
+% ==============================================================================
+\section*{Resumo}
+
+Em ambientes de produção, a entrega eficiente de inferências de modelos de aprendizado de máquina é tão crítica quanto a acurácia do modelo. Fenômenos como \textit{cold starts} e \textit{jitter} de sistema degradam a latência de cauda (P99), tornando a mediana (P50) uma métrica insuficiente para avaliar a confiabilidade operacional. Este trabalho propõe uma análise quantitativa comparativa da latência P99 ao servir um modelo XGBoost, treinado sobre um dataset tabular de grande escala e exportado em formato ONNX, a partir de dois pipelines: um baseado em FastAPI e outro em BentoML com \textit{adaptive batching}. Um protocolo de benchmarking com fase de aquecimento e taxa de requisições constante será utilizado para gerar distribuições de latência estatisticamente válidas. O entregável principal é a análise empírica das distribuições de latência, identificando sob quais condições de carga cada abordagem apresenta vantagens em termos de confiabilidade P99.
+
+\textbf{Palavras-chave:} Inferência de ML; latência de cauda P99; dados tabulares; XGBoost; ONNX; BentoML; FastAPI; benchmarking.
+
+\newpage
+% ==============================================================================
+% 1. INTRODUÇÃO
+% ==============================================================================
+\section{Introdução}
+
+A otimização de inferência de modelos de aprendizado de máquina representa uma interseção entre os algoritmos de ciência de dados e as exigências práticas de engenharia de sistemas.\cite{nakandala2020} Enquanto a comunidade acadêmica dedica grande atenção ao treinamento de modelos, a entrega eficiente de predições em produção permanece subexplorada, especialmente para \textit{ensembles} de árvores de decisão.\cite{asadi2024}
+
+Existe, contudo, um abismo entre treinar um modelo em um \textit{Jupyter Notebook} e colocá-lo em produção com latência previsível e escalabilidade. Em domínios que servem dados tabulares de forma síncrona, como detecção de fraude em tempo real, onde cada transação bancária exige uma decisão em milissegundos para bloquear ou aprovar a operação; escoragem de crédito, onde a experiência de aprovação instantânea depende de um modelo tabular servido via API; e \textit{digital advertising}, onde lances de \textit{Real-Time Bidding} (RTB) impõem orçamentos de latência inferiores a 10\,ms, a latência de cauda P99 não é uma métrica acadêmica: é a diferença entre capturar ou perder uma transação.
+
+Modelos de \textit{gradient boosting}, como o XGBoost,\cite{chen2016} dominam essas aplicações de dados tabulares, superando redes neurais em benchmarks tabulares.\cite{grinsztajn2022} Entretanto, servir esses modelos com garantias de latência é um desafio técnico distinto: a travessia condicional de centenas de árvores binárias causa padrões irregulares de acesso à memória.\cite{nakandala2020}
+
+Em arquiteturas modernas de microsserviços, sistemas de ML são frequentemente implantados em contêineres orquestrados via Docker ou Kubernetes.\cite{zaharia2024} Nesses ambientes, \textit{cold starts} (inicialização de novas instâncias) e \textit{jitter} de sistema (variações de latência por pausas de \textit{garbage collector}, trocas de contexto de CPU e \textit{cache misses})\cite{dean2013} tornam a mediana de latência (P50) uma métrica inadequada para avaliar a confiabilidade do sistema. A latência de cauda, representada pelo percentil P99, captura as anomalias severas que afetam a experiência dos usuários.\cite{tene2015}
+
+Este trabalho propõe comparar dois pipelines de entrega de modelos tabulares, FastAPI e BentoML, focando na análise das distribuições de latência P99 sob diferentes níveis de carga, com o objetivo de fornecer evidência empírica que auxilie engenheiros a selecionar a arquitetura de \textit{serving} mais adequada para sistemas onde cada milissegundo de cauda tem impacto direto em receita e experiência do usuário.
+
+\newpage
+% ==============================================================================
+% 2. OBJETIVOS
+% ==============================================================================
+\section{Objetivos}
+
+\subsection{Objetivo Geral}
+
+Produzir uma análise quantitativa comparativa da latência de cauda (P99) ao servir um modelo tabular otimizado através de dois pipelines de entrega distintos: um framework web generalista (FastAPI) e uma plataforma especializada de ML (BentoML).
+
+\subsection{Objetivos Específicos}
+
+\begin{enumerate}
+  \item Treinar um modelo XGBoost sobre um dataset tabular de classificação binária e exportá-lo no formato ONNX;
+  \item Construir dois pipelines de inferência conteinerizados: (a) FastAPI com ONNX Runtime e (b) BentoML com \textit{adaptive batching};
+  \item Executar um protocolo de benchmarking com fase de aquecimento e taxa de requisições constante;
+  \item Registrar distribuições de latência (P50, P95, P99) e \textit{throughput} para ambos os pipelines sob diferentes níveis de concorrência;
+  \item Analisar estatisticamente os resultados, identificando as condições sob as quais cada abordagem apresenta vantagens na compressão da cauda P99.
+\end{enumerate}
+
+\newpage
+% ==============================================================================
+% 3. METODOLOGIA
+% ==============================================================================
+\section{Metodologia}
+
+\subsection{Preparação de Dados e Modelo}
+
+Um dataset tabular de classificação binária de grande escala será selecionado, pré-processado e utilizado para treinar um modelo XGBoost. O modelo será exportado para ONNX via \texttt{onnxmltools}.\cite{onnxruntime2024}
+
+\subsection{Pipelines de Inferência}
+
+Dois pipelines conteinerizados via Docker serão construídos com recursos de CPU e memória controlados:
+
+\begin{itemize}
+  \item \textbf{Pipeline A --- FastAPI:} Aplicação assíncrona servindo o modelo via ONNX Runtime, representando a abordagem generalista;
+  \item \textbf{Pipeline B --- BentoML:} O mesmo modelo empacotado com \textit{adaptive batching}, agrupando requisições em lotes antes da inferência.
+\end{itemize}
+
+Em ambos os pipelines, os hiperparâmetros de concorrência do ONNX Runtime (\texttt{intra\allowbreak\_op\allowbreak\_num\allowbreak\_threads} e \texttt{inter\allowbreak\_op\allowbreak\_num\allowbreak\_threads}) serão fixados de acordo com os limites de CPU alocados ao contêiner Docker, garantindo reprodutibilidade e isolamento dos efeitos de paralelismo do \textit{runtime} sobre a latência medida.
+
+\subsection{Protocolo de Benchmarking}
+
+O protocolo seguirá práticas estabelecidas de benchmarking de inferência:\cite{tene2015,reddi2020}
+
+\begin{enumerate}
+  \item \textbf{Aquecimento:} 50--100 requisições disparadas antes da medição para inicialização de compiladores JIT e preenchimento de caches;
+  \item \textbf{Medição sustentada:} um gerador de carga de modelo aberto (Vegeta)\cite{vegeta2024} disparará requisições a taxa constante por 60 segundos. Diferentemente de ferramentas de modelo fechado, que desaceleram o envio quando o servidor engasga (\textit{Coordinated Omission})\cite{tene2015}, o Vegeta mantém a taxa de disparo independentemente do tempo de resposta, registrando a latência real experimentada pelo cliente;
+  \item \textbf{Variação de concorrência:} os testes serão executados com 1, 10, 50 e 100 clientes simultâneos.
+\end{enumerate}
+
+\subsection{Análise de Resultados}
+
+Para cada configuração, serão registradas as distribuições de latência (P50, P95, P99) e \textit{throughput} (RPS). Os resultados serão analisados estatisticamente, com foco na razão P99/P50 como indicador de \textit{jitter} e na identificação do ponto de inflexão de concorrência entre as duas abordagens.
+
+\newpage
+% ==============================================================================
+% 4. CRONOGRAMA
+% ==============================================================================
+\section{Cronograma}
+
+\begin{table}[H]
+\centering
+\caption{Cronograma de atividades do projeto.}
+\label{tab:cronograma}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\textwidth}{|X|c|c|c|c|}
+\hline
+\textbf{Atividade} & \textbf{Mês 1} & \textbf{Mês 2} & \textbf{Mês 3} & \textbf{Mês 4} \\
+\hline
+Revisão bibliográfica e treinamento do modelo
+  & $\bullet$ & & & \\
+\hline
+Exportação ONNX e construção dos pipelines
+  & $\bullet$ & $\bullet$ & & \\
+\hline
+Implementação do protocolo de benchmarking
+  & & $\bullet$ & & \\
+\hline
+Execução dos experimentos e coleta de dados
+  & & & $\bullet$ & \\
+\hline
+Análise estatística e redação da monografia
+  & & & $\bullet$ & $\bullet$ \\
+\hline
+Revisão final e apresentação
+  & & & & $\bullet$ \\
+\hline
+\end{tabularx}
+\end{table}
+
+\newpage
+% ==============================================================================
+% REFERÊNCIAS
+% ==============================================================================
+\printbibliography[title={Referências}]
+
+\end{document}

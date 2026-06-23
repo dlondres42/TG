@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${WEB_CONCURRENCY:=1}"
+: "${ORT_INTRA_OP_NUM_THREADS:=2}"
+: "${ORT_INTER_OP_NUM_THREADS:=1}"
+
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$ORT_INTRA_OP_NUM_THREADS}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-$ORT_INTRA_OP_NUM_THREADS}"
+export ORT_INTRA_OP_NUM_THREADS ORT_INTER_OP_NUM_THREADS WEB_CONCURRENCY
+
+echo "[entrypoint] WEB_CONCURRENCY=$WEB_CONCURRENCY" \
+             "ORT_INTRA=$ORT_INTRA_OP_NUM_THREADS" \
+             "ORT_INTER=$ORT_INTER_OP_NUM_THREADS" \
+             "OMP=$OMP_NUM_THREADS MKL=$MKL_NUM_THREADS"
+
+exec bentoml serve service:TgService \
+    --host 0.0.0.0 \
+    --port 8000

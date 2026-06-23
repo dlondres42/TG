@@ -1,0 +1,156 @@
+% =============================================================================
+% Referências bibliográficas — Monografia TG CIn-UFPE
+% David Ubaldo Mesquita Londres / Orientador Cleber Zanchettin
+% =============================================================================
+
+% --- Referências herdadas do pré-projeto ---
+
+@inproceedings{nakandala2020,
+  author    = {Nakandala, Supun and Saur, Karla and Yu, Gyeong-In and Karanasos, Konstantinos and Curino, Carlo and Weimer, Markus and Interlandi, Matteo},
+  title     = {A Tensor Compiler for Unified Machine Learning Prediction Serving},
+  booktitle = {Proceedings of the 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  year      = {2020},
+  pages     = {899--917}
+}
+
+@article{asadi2024,
+  author  = {Ye, Yuanming and Chen, Chenxi and Stolfo, Salvatore},
+  title   = {A Comparison of Decision Forest Inference Platforms from a Database Perspective},
+  journal = {arXiv preprint arXiv:2302.04430},
+  year    = {2024}
+}
+
+@inproceedings{chen2016,
+  author    = {Chen, Tianqi and Guestrin, Carlos},
+  title     = {{XGBoost}: A Scalable Tree Boosting System},
+  booktitle = {Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining},
+  year      = {2016},
+  pages     = {785--794},
+  publisher = {ACM}
+}
+
+@article{grinsztajn2022,
+  author  = {Grinsztajn, L{\'e}o and Oyallon, Edouard and Varoquaux, Ga{\"e}l},
+  title   = {Why do tree-based models still outperform deep learning on typical tabular data?},
+  journal = {Advances in Neural Information Processing Systems},
+  year    = {2022},
+  volume  = {35}
+}
+
+@article{zaharia2024,
+  author  = {Zaharia, Matei and others},
+  title   = {Scalable and Secure {AI} Inference in Healthcare: A Comparative Benchmarking of {FastAPI} and {Triton} Inference Server on {Kubernetes}},
+  journal = {arXiv preprint arXiv:2602.00053},
+  year    = {2024}
+}
+
+@article{dean2013,
+  author    = {Dean, Jeffrey and Barroso, Luiz Andr{\'e}},
+  title     = {The Tail at Scale},
+  journal   = {Communications of the ACM},
+  year      = {2013},
+  volume    = {56},
+  number    = {2},
+  pages     = {74--80}
+}
+
+@misc{tene2015,
+  author = {Tene, Gil},
+  title  = {How {NOT} to Measure Latency},
+  year   = {2015},
+  note   = {Apresenta\c{c}\~ao na P99 CONF. Dispon\'\i vel em: \url{https://www.youtube.com/watch?v=m8nq3cbMgY4}}
+}
+
+@misc{onnxruntime2024,
+  author = {{Microsoft}},
+  title  = {{ONNX} Runtime Documentation},
+  year   = {2024},
+  note   = {Dispon\'\i vel em: \url{https://onnxruntime.ai/}}
+}
+
+@inproceedings{reddi2020,
+  author    = {Reddi, Vijay Janapa and others},
+  title     = {{MLPerf} Inference Benchmark},
+  booktitle = {Proceedings of the ACM/IEEE International Symposium on Computer Architecture},
+  year      = {2020}
+}
+
+@misc{vegeta2024,
+  author = {Senart, Tom{\'a}s},
+  title  = {{Vegeta}: {HTTP} load testing tool and library},
+  year   = {2024},
+  note   = {Dispon\'\i vel em: \url{https://github.com/tsenart/vegeta}}
+}
+
+% --- Referências novas para verificação L1 contra literatura ---
+
+@misc{sieboehm2021,
+  author = {Sieboehm, Matthias},
+  title  = {{lleaves}: Compiling Decision Trees for Fast Prediction using {LLVM}},
+  year   = {2021},
+  note   = {Dispon\'\i vel em: \url{https://siboehm.com/articles/21/lleaves}}
+}
+
+@article{asadi2014,
+  author  = {Asadi, Nima and Lin, Jimmy and de Vries, Arjen P.},
+  title   = {Runtime Optimizations for Tree-Based Machine Learning Models},
+  journal = {IEEE Transactions on Knowledge and Data Engineering},
+  year    = {2014},
+  volume  = {26},
+  number  = {9},
+  pages   = {2281--2292}
+}
+
+@inproceedings{cho2018,
+  author    = {Cho, Hyunsu and Li, Mu},
+  title     = {{Treelite}: toolbox for decision tree deployment},
+  booktitle = {Proceedings of the Conference on Systems and Machine Learning (SysML)},
+  year      = {2018}
+}
+
+@inproceedings{lucchese2015,
+  author    = {Lucchese, Claudio and Nardini, Franco Maria and Orlando, Salvatore and Perego, Raffaele and Tonellotto, Nicola and Venturini, Rossano},
+  title     = {{QuickScorer}: a Fast Algorithm to Rank Documents with Additive Ensembles of Regression Trees},
+  booktitle = {Proceedings of the 38th International ACM SIGIR Conference on Research and Development in Information Retrieval},
+  year      = {2015},
+  pages     = {73--82}
+}
+
+@inproceedings{ye2018,
+  author    = {Ye, Ting and Zhou, Hongyu and Zou, Quan Y. and Gao, Bin and Zhang, Ruofei},
+  title     = {{RapidScorer}: fast tree ensemble evaluation by maximizing compactness in data level parallelization},
+  booktitle = {Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery \& Data Mining},
+  year      = {2018},
+  pages     = {941--950}
+}
+
+@misc{onnx_treeensemble,
+  author = {{ONNX}},
+  title  = {{TreeEnsembleClassifier} -- {ai.onnx.ml} Operator Specification},
+  year   = {2024},
+  note   = {Dispon\'\i vel em: \url{https://onnx.ai/onnx/operators/onnx_aionnxml_TreeEnsembleClassifier.html}}
+}
+
+@misc{bentoml_dispatcher,
+  author = {{BentoML Contributors}},
+  title  = {{BentoML} adaptive batching dispatcher source},
+  year   = {2024},
+  note   = {Dispon\'\i vel em: \url{https://github.com/bentoml/BentoML/blob/main/src/bentoml/_internal/marshal/dispatcher.py}}
+}
+
+@article{efron1979,
+  author  = {Efron, Bradley},
+  title   = {Bootstrap Methods: Another Look at the Jackknife},
+  journal = {The Annals of Statistics},
+  year    = {1979},
+  volume  = {7},
+  number  = {1},
+  pages   = {1--26}
+}
+
+@misc{higgs2014,
+  author = {Baldi, Pierre and Sadowski, Peter and Whiteson, Daniel},
+  title  = {{HIGGS} Data Set -- {UCI} Machine Learning Repository},
+  year   = {2014},
+  note   = {Dispon\'\i vel em: \url{https://archive.ics.uci.edu/dataset/280/higgs}}
+}

@@ -1,0 +1,46 @@
+\begin{abstract}
+This work presents a quantitative comparison of two serving pipelines for an
+XGBoost model on tabular data: FastAPI with ONNX Runtime, and BentoML with
+\textit{adaptive batching}. A 219-cell open-loop benchmark sweep over
+(workers, threads, RPS) was executed with the Vegeta load generator, and the
+end-to-end latency was decomposed into three measurement layers (pure
+inference, host HTTP, containerised deployment) to attribute overhead. To
+compare a load-shedding system against a queueing system fairly, the headline
+metric is goodput within a 50~ms SLA. FastAPI sustained between 99.7\% and
+100\% of goodput across the matrix from 50 to 1000 RPS, while BentoML
+collapsed between 350 and 600 RPS scaling with worker count, with the P99
+latency growing by two orders of magnitude over the same RPS range. Direct
+CPU-utilisation evidence collected on a 60-run mechanism subset confirmed
+that the single asynchronous dispatcher coroutine per BentoML worker is the
+bottleneck: BentoML consumed approximately 2.5 times the CPU of FastAPI under
+identical load. For cheap single-row tree-ensemble inference on CPU,
+adaptive batching's per-request plumbing exceeds any batching amortisation.
+\end{abstract}
+
+\begin{resumo}
+Este trabalho apresenta uma comparação quantitativa entre dois pipelines de
+\textit{serving} para um modelo XGBoost aplicado a dados tabulares: FastAPI
+com ONNX Runtime e BentoML com \textit{adaptive batching}. Foi executada uma
+varredura de modelo aberto de 219 células sobre (\textit{workers},
+\textit{threads}, RPS) com o gerador de carga Vegeta, decompondo a latência
+ponta a ponta em três camadas de medição (inferência pura, HTTP no host e
+\textit{deployment} conteinerizado) para atribuir o sobrecusto. Para comparar
+de forma justa um sistema que descarta requisições contra um sistema que as
+enfileira, a métrica principal adotada foi a vazão útil dentro de um SLA de
+50~ms. O FastAPI sustentou entre 99,7\% e 100\% de vazão útil sobre toda a
+matriz de 50 a 1000 RPS, enquanto o BentoML colapsou entre 350 e 600 RPS
+escalando com o número de \textit{workers}, e a latência P99 cresceu duas
+ordens de magnitude sobre o mesmo intervalo de RPS. A evidência direta de
+utilização de CPU coletada em um subconjunto de mecanismo de 60 execuções
+confirmou que a única corrotina assíncrona de \textit{dispatcher} por
+\textit{worker} do BentoML é o gargalo: o BentoML consumiu cerca de 2,5 vezes
+a CPU do FastAPI sob carga idêntica. Para inferência barata de árvores em
+CPU sobre uma linha por requisição, o sobrecusto por requisição do
+\textit{adaptive batching} excede qualquer amortização de lote.
+
+\textbf{Palavras-chave:} serviços de inferência de \textit{ML}; latência de
+cauda; P99; FastAPI; BentoML; ONNX Runtime; \textit{adaptive batching};
+benchmarking de modelo aberto; \textit{Coordinated Omission}; XGBoost; dados
+tabulares.
+\end{resumo}
+

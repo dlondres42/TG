@@ -1,0 +1,22 @@
+{
+  "input_name": "features",
+  "input_dtype": "float32",
+  "input_shape": [
+    null,
+    28
+  ],
+  "output_names": [
+    "label",
+    "probabilities"
+  ],
+  "n_features": 28,
+  "target_opset": 15,
+  "model_sha256": "dcc3b14573d73e424376a709dcf9472ea45e6b9cf9ac8a7df90ed6fc51a7839e",
+  "onnx_size_bytes": 8306676,
+  "parity": {
+    "sample_size": 10000,
+    "max_abs_diff": 4.172325134277344e-07,
+    "mean_abs_diff": 6.082357373315972e-08,
+    "tolerance": 1e-05
+  }
+}

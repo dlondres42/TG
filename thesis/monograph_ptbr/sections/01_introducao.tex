@@ -1,0 +1,94 @@
+\section{Introdução}
+
+A otimização de inferência de modelos de aprendizado de máquina representa
+uma interseção entre os algoritmos de ciência de dados e as exigências
+práticas de engenharia de sistemas \cite{nakandala2020}. Enquanto a
+comunidade acadêmica dedica grande atenção ao treinamento de modelos, a
+entrega eficiente de predições em produção permanece subexplorada,
+especialmente para \textit{ensembles} de árvores de decisão
+\cite{asadi2024}.
+
+Existe um abismo entre treinar um modelo em um \textit{Jupyter Notebook} e
+colocá-lo em produção com latência previsível e escalabilidade. Em domínios
+que servem dados tabulares de forma síncrona, como detecção de fraude em
+tempo real, escoragem de crédito e \textit{Real-Time Bidding} (RTB) em
+publicidade digital, cada requisição exige uma decisão em milissegundos para
+bloquear ou aprovar uma operação, depende de uma resposta instantânea de
+aprovação ou impõe orçamentos de latência inferiores a 10\,ms. Nessas
+condições, a latência de cauda no percentil P99 não é uma métrica acadêmica
+e sim a diferença entre capturar ou perder uma transação.
+
+Modelos de \textit{gradient boosting} como o XGBoost dominam essas
+aplicações de dados tabulares, superando redes neurais em benchmarks
+representativos \cite{chen2016, grinsztajn2022}. Entretanto, servir esses
+modelos com garantias de latência é um desafio técnico distinto: a
+travessia condicional de centenas de árvores binárias causa padrões
+irregulares de acesso à memória \cite{nakandala2020}, e o sobrecusto da
+camada de \textit{serving} ao redor da inferência tende a dominar o tempo de
+resposta para modelos cuja inferência é da ordem de microssegundos.
+
+Em arquiteturas modernas de microsserviços, sistemas de aprendizado de
+máquina são frequentemente implantados em contêineres orquestrados via
+Docker ou Kubernetes \cite{zaharia2024}. Nesses ambientes, \textit{cold
+starts} (inicialização de novas instâncias) e \textit{jitter} de sistema,
+provocado por pausas do \textit{garbage collector}, trocas de contexto de
+CPU e \textit{cache misses}, tornam a mediana da latência (P50) uma métrica
+inadequada para avaliar a confiabilidade operacional \cite{dean2013}. A
+latência de cauda, representada pelo percentil P99, captura as anomalias
+severas que afetam a experiência dos usuários, e medi-la corretamente exige
+um gerador de carga de modelo aberto que não desacelere quando o servidor
+engasga \cite{tene2015}.
+
+Este trabalho conduz uma análise quantitativa comparativa entre dois
+pipelines de entrega para um modelo XGBoost treinado sobre o conjunto de
+dados HIGGS \cite{higgs2014} e exportado em formato ONNX
+\cite{onnxruntime2024}. O primeiro pipeline emprega FastAPI com ONNX
+Runtime, representando a abordagem de servidor web generalista; o segundo
+emprega BentoML com \textit{adaptive batching}, representando a abordagem
+especializada que agrupa requisições concorrentes em lotes antes da
+inferência. Ambos os pipelines são conteinerizados, sujeitos a limites
+idênticos de CPU e memória, e submetidos a uma varredura matricial sobre os
+eixos de paralelismo do servidor (\textit{workers} e \textit{threads}) e
+intensidade de carga (RPS).
+
+As contribuições deste trabalho são as seguintes. Primeiro, uma comparação
+empírica em 219 células experimentais cobrindo quatro variantes de
+configuração e cinco taxas de requisições por segundo, com três repetições
+por célula. Segundo, uma decomposição da latência ponta a ponta em três
+camadas de medição (inferência pura, HTTP no host e contêiner Docker
+completo), permitindo atribuir o sobrecusto a componentes específicos da
+plataforma de \textit{serving}. Terceiro, uma métrica de vazão útil sob SLA que
+permite comparar de forma justa um sistema que descarta requisições por
+prazo expirado contra um sistema que as enfileira como latência adicional.
+Quarto, evidência direta de utilização de CPU coletada em um subconjunto de
+mecanismo de 60 execuções, identificando a corrotina de \textit{dispatcher}
+do BentoML como o ponto de serialização que limita sua vazão.
+
+Os resultados refutam a hipótese inicial de que o \textit{adaptive batching}
+absorveria concorrência com mais elegância e comprimiria a latência de
+cauda. O FastAPI sustentou entre 99,7\% e 100\% de vazão útil dentro de um
+SLA de 50\,ms sobre toda a matriz de 50 a 1000 RPS, enquanto o BentoML
+colapsou entre 350 e 600 RPS escalando com o número de \textit{workers}, e o
+P99 cresceu duas ordens de magnitude sobre o mesmo intervalo de RPS. A
+evidência de CPU mostra que o BentoML consome aproximadamente 2,5 vezes a
+CPU do FastAPI sob carga idêntica, e mesmo assim colapsa: o gargalo é a
+serialização imposta pela única corrotina de \textit{dispatcher} por
+\textit{worker}, não escassez de recursos computacionais. Para inferência
+barata de árvores em CPU sobre uma linha por requisição, o sobrecusto por
+requisição do \textit{adaptive batching} excede qualquer amortização de
+lote possível para um custo de inferência da ordem de 14 microssegundos.
+
+O restante desta monografia está organizado em oito seções. A Seção~2
+revisa o operador ONNX para \textit{ensembles} de árvores, a teoria de
+latência de cauda e \textit{Coordinated Omission}, e o desenho do
+\textit{adaptive batching}. A Seção~3 posiciona o trabalho frente a
+benchmarks publicados de inferência de florestas de decisão e comparações
+de plataformas de \textit{serving}. A Seção~4 descreve a metodologia
+experimental: decomposição em três camadas, varredura matricial, geração
+de carga com Vegeta, pinagem de CPU e procedimentos estatísticos. A
+Seção~5 documenta a implementação dos dois servidores e da infraestrutura
+de \textit{benchmarking}. A Seção~6 apresenta os resultados quantitativos. A
+Seção~7 discute o mecanismo identificado, os regimes em que o
+\textit{adaptive batching} ainda seria vantajoso e as ameaças à validade. A
+Seção~8 conclui e aponta trabalhos futuros.
+

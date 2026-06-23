@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(sh *)",
+      "Bash(bash *)",
+      "PowerShell(*)"
+    ],
+    "deny": [
+      "Bash(rm *)",
+      "Bash(rm -rf *)",
+      "Bash(del *)",
+      "Bash(rmdir /s *)",
+      "Bash(git rm *)",
+      "Bash(git clean *)",
+      "Bash(git reset --hard *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git branch -D *)",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(rm *)",
+      "PowerShell(del *)",
+      "PowerShell(rd *)",
+      "PowerShell(rmdir *)",
+      "PowerShell(* -Recurse *-Force *)",
+      "PowerShell(Clear-Content *)",
+      "PowerShell(git rm *)",
+      "PowerShell(git clean *)",
+      "PowerShell(git reset --hard *)",
+      "PowerShell(git push --force *)",
+      "PowerShell(git push -f *)",
+      "PowerShell(git branch -D *)"
+    ]
+  }
+}

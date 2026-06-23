@@ -1,0 +1,119 @@
+Methodological Rigor in Benchmarking Protocols
+A graduation project focused on inference optimization must rely on a meticulously rigorous, reproducible, and statistically sound benchmarking methodology.45 Implementing naive timing scripts—such as measuring the difference utilizing time.time() before and after a Python .predict() call—is a fundamentally flawed approach. Such rudimentary methods are highly susceptible to operating system interruptions, background processes, and framework overhead, yielding invalid scientific data.47 Proper, defensible benchmarking requires a profound understanding of distinct performance metrics and the execution of stringent, isolated testing protocols.46
+Defining the Axes of Evaluation: Latency and Throughput
+System performance in machine learning delivery is universally evaluated along two inherently competing axes: latency and throughput.48
+Throughput: Formally measured in requests per second (RPS) or inferences per second.3 It quantifies the absolute total volume of data the system can successfully process within a fixed, predefined time window.48 Throughput is systematically maximized by increasing batch sizes, effectively saturating the hardware resources and transforming a memory-bandwidth-bound operation into a highly efficient compute-bound operation.41
+Latency: The true end-to-end duration from the exact microsecond a client dispatches a request to the moment the serialized response is fully received.39 It is imperative to understand that latency is fundamentally a statistical distribution, never a single, absolute value.50
+In both academic research and industrial performance benchmarking, median latency (denoted as P50) is reported as the standard baseline expectation, representing the speed at which 50% of all requests are successfully processed.39 However, the most critical metric for evaluating system stability is tail latency, universally represented as the 95th percentile (P95) or the 99th percentile (P99).50 The P99 latency indicates the maximum time taken by the fastest 99% of requests; conversely, it highlights the severe delays experienced by the slowest 1%.50 Tail latency captures the rare, unpredictable system anomalies that cause severe processing delays, such as garbage collection pauses within the Python or Java runtime environment, network packet loss requiring TCP retries, unexpected context switching by the CPU scheduler, or sudden L3 cache misses.50 A truly robust and optimized ML delivery system is characterized not merely by a fast P50 median, but by a remarkably tight statistical grouping between the P50 and P99 metrics. This tight grouping represents low system jitter, high predictability, and operational excellence under load.50
+Standardized Measurement Protocols
+To guarantee absolute empirical validity and prevent configuration drift, an inference benchmark must surgically isolate the specific hardware and software variables being tested.52 A rigorous protocol involves distinct, sequential phases:
+Hardware Initialization and Pinning: Ensuring that CPU affinity is strictly managed. For instance, binding specific inference threads to specific physical CPU cores utilizing commands like taskset in Linux.53 This prevents the operating system kernel from arbitrarily migrating the workload across different cores, which completely invalidates cache locality and introduces severe measurement noise.53
+The Warm-up Phase: Before any performance measurements are recorded, the load testing client must send a barrage of dummy requests (e.g., 20 to 100 initial forward passes) to the endpoint.46 This critical phase allows the Just-In-Time (JIT) compilers to initialize, allocates the necessary memory buffers on the GPU, and populates the hardware L1/L2 caches.46 Measuring a "cold start" without explicitly intending to study cold starts will irreparably skew the P99 latency metrics, resulting in scientifically invalid conclusions.42
+The Measurement Phase: The load generator dispatches simulated client requests concurrently for a sustained duration (e.g., 60 seconds of continuous load) or a fixed number of massive iterations.53 Industrial-grade tools such as Apache JMeter, wrk, or Locust must be utilized because they manage connection pooling efficiently and record highly accurate latency histograms at the microsecond level.37
+Avoiding Coordinated Omission: A critical, often-overlooked pitfall in benchmarking is coordinated omission.47 This occurs when the load testing tool waits for a delayed response from the server before sending the next scheduled request.47 This inadvertently masks the severity of system stalls, as the tool backs off exactly when it should be measuring failure. Professional load generators must be configured to maintain a constant, unyielding request rate regardless of the server's response time to accurately capture queuing delays and expose true tail latency.47
+Public Datasets for Reproducible Benchmarking
+The fundamental reproducibility of a graduation project relies heavily on the utilization of open-access, highly standardized datasets.56 While image and text datasets dominate deep learning research (such as the ImageNet benchmark), tabular datasets present highly unique structural challenges for decision forests, characterized by wildly varying degrees of cardinality, sparsity, and dimensionality.7 To comprehensively benchmark tree ensembles and eliminate bias, the following public datasets are considered the absolute industry standards within the DFInferBench framework and similar academic testing suites 8:
+The Higgs Dataset (UCI Machine Learning Repository): A massively dense dataset containing 11 million instances and 28 numerical features, originally utilized for binary classification in high-energy physics.57 Because it contains absolutely no missing values and a relatively small feature space, it is the premier benchmark for testing raw, compute-bound execution speed on CPUs and GPUs.58
+The Airline Dataset: Contains over 115 million comprehensive records of commercial flight data utilized to predict arrival delays.11 It introduces profound complexity through a dense mixture of categorical and continuous variables, serving as a robust, real-world test for data preprocessing algorithms and categorical encoding efficiency prior to inference.11
+The Epsilon Dataset: A highly dense, extremely wide synthetic dataset where each individual instance possesses 2,000 features.8 It is explicitly utilized to test the memory bandwidth limitations and cache capacity of the inference engine, as moving large feature vectors across the system bus becomes the primary processing bottleneck, completely overshadowing the mathematical computation.8
+The Criteo Terabyte Dataset: A massive, terabyte-scale dataset utilized extensively in the advertising industry for click-through rate (CTR) prediction.57 It contains approximately 1 million features per tuple and is highly sparse, riddled with missing values.8 Benchmarking on Criteo evaluates how efficiently an inference engine and delivery framework handles complex memory pointers and sparse matrix representations.8
+Dataset
+Core Domain
+Total Instances
+Feature Count
+Structural Characteristics
+Primary System Bottleneck Tested
+Higgs
+High-Energy Physics
+11 Million
+28
+Highly dense, purely continuous
+CPU/GPU Raw Computational Speed
+Airline
+Global Logistics
+115 Million
+13
+Mixed data types
+Categorical Encoding & Parsing
+Epsilon
+Synthetic Benchmark
+500,000
+2,000
+Extremely wide, dense
+Memory Bandwidth & Cache Limits
+Criteo
+Digital Advertising
+Terabyte-scale
+~1 Million
+Highly sparse, missing values
+Sparse Memory Management
+
+Proposed Graduation Project Themes
+Drawing upon the sophisticated complexity established by recent CIn-UFPE graduation works 6, the following five project themes meticulously integrate inference optimization frameworks, modern serving architectures, and rigorous benchmarking protocols. Each theme is purposely designed to have a short, clearly defined academic scope while yielding high-value, empirically sound data that directly addresses current MLOps challenges.
+Theme 2: Tail Latency (P99) Optimization in Serverless ML Delivery for Tabular Data
+Context: Industrial microservice architectures are rapidly migrating toward serverless or auto-scaling container deployments orchestrated by Kubernetes.37 In these highly dynamic environments, "cold starts" and system jitter severely impact the end-user experience, rendering median latency (P50) an entirely insufficient metric for system reliability.42 Objective: To isolate, measure, and minimize the specific software causes of P99 tail latency when serving optimized tabular machine learning models through lightweight Python web frameworks versus specialized ML servers. Methodology: An XGBoost model is trained on the Airline dataset to handle mixed data types.57 The model is explicitly exported to the standardized ONNX format to guarantee absolute interoperability between servers.10 Two distinct delivery pipelines are constructed: one utilizing a standard FastAPI asynchronous application, and one utilizing BentoML.40 A rigorous benchmarking protocol is executed, specifically designed to measure cold start initialization times and P99 latency distributions.42 The benchmark manipulates the batch size parameters within BentoML’s adaptive batching engine to observe the effect on the latency tail. Expected Deliverable: A system architecture blueprint and quantitative statistical analysis proving that while FastAPI may provide low P50 latency for isolated individual requests, adaptive batching within specialized runtimes forcibly compresses the P99 latency tail, offering vastly superior statistical reliability under highly variable traffic conditions.41
+
+The optimization of machine learning inference represents a vital intersection, effectively bridging the theoretical algorithms of data science with the highly demanding physical realities of robust software and systems engineering. As clearly demonstrated by the escalating technical complexity of recent CIn-UFPE graduation works, the academic evaluation of modern ML systems demands a rigorous, empirical understanding of systemic behavior under operational load.6 By purposefully shifting the research focus away from the highly saturated domain of model training and strictly analyzing the mechanics of model delivery, an undergraduate thesis can yield profound, highly actionable insights into the mechanics of modern computing.
+Focusing the scope on tree ensembles provides a mathematically stable, highly interpretable, and reproducible baseline.4 Through the integration of standardized public tabular datasets 57 and state-of-the-art computational frameworks—such as the tensor-based graph execution of Hummingbird, the ahead-of-time C-compilation of Treelite, and the GPU predicate optimization of Nvidia FIL—a researcher can construct an extensive and highly valid empirical study.8 By further combining these deep algorithmic optimizations with industrial serving platforms like BentoML or the Triton Inference Server 41, and measuring true performance utilizing strict P99 latency percentiles to account for system jitter 50, the resulting graduation project will not only fulfill stringent academic requirements but will directly and competently address the most pressing scalability challenges present in the contemporary software industry.
+
+Referências citadas
+How continuous batching enables 23x throughput in LLM inference while reducing p50 latency - Anyscale, acessado em fevereiro 22, 2026, https://www.anyscale.com/blog/continuous-batching-llm-inference
+Deep Learning Inference Frameworks Benchmark - arXiv, acessado em fevereiro 22, 2026, https://arxiv.org/pdf/2210.04323
+Operational Benchmarking of ML Models for Fraud Detection: A Comparative Study on AWS EC2 and ECS - IEEE Xplore, acessado em fevereiro 22, 2026, https://ieeexplore.ieee.org/iel8/6287639/10820123/11199034.pdf
+Supercharge Tree-Based Model Inference with Forest Inference Library in NVIDIA cuML, acessado em fevereiro 22, 2026, https://developer.nvidia.com/blog/supercharge-tree-based-model-inference-with-forest-inference-library-in-nvidia-cuml/
+PACSET (Packed serialized trees): Reducing Inference Latency for Tree ensemble Deployment - arXiv, acessado em fevereiro 22, 2026, https://arxiv.org/pdf/2011.05383
+Trabalhos de Graduação - 2024.1 - CIn-UFPE, acessado em fevereiro 22, 2026, https://www.cin.ufpe.br/~tg/2024-1/
+A Comprehensive Benchmark of Machine and Deep Learning Across Diverse Tabular Datasets - arXiv, acessado em fevereiro 22, 2026, https://arxiv.org/html/2408.14817v1
+A Comparison of End-to-End Decision Forest Inference Pipelines - PMC - NIH, acessado em fevereiro 22, 2026, https://pmc.ncbi.nlm.nih.gov/articles/PMC12406228/
+Beyond Gradient Boosting: Exploring Ensemble Methods with XGBoost, LightGBM, and Random Forests | by Data Overload | Medium, acessado em fevereiro 22, 2026, https://medium.com/@data-overload/beyond-gradient-boosting-exploring-ensemble-methods-with-xgboost-lightgbm-and-random-forests-2e7f39bc2b75
+ML Inference Runtimes in 2026: An Architect's Guide to Choosing the Right Engine | by Digvijay Singh | Dec, 2025 | Medium, acessado em fevereiro 22, 2026, https://medium.com/@digvijay17july/ml-inference-runtimes-in-2026-an-architects-guide-to-choosing-the-right-engine-d3989a87d052
+A Comparison of Decision Forest Inference Platforms from A Database Perspective - arXiv.org, acessado em fevereiro 22, 2026, https://arxiv.org/pdf/2302.04430
+Improving the Performance of XGBoost and LightGBM Inference | by Igor Rukhovich | Intel Analytics Software | Medium, acessado em fevereiro 22, 2026, https://medium.com/intel-analytics-software/improving-the-performance-of-xgboost-and-lightgbm-inference-3b542c03447e
+[2302.04430] A Comparison of Decision Forest Inference Platforms from A Database Perspective - ar5iv, acessado em fevereiro 22, 2026, https://ar5iv.labs.arxiv.org/html/2302.04430
+Methods to boost XGBoost Model Inference Latency | by Kaige | Jan, 2026 - Medium, acessado em fevereiro 22, 2026, https://medium.com/@kaige.yang0110/methods-to-boost-xgboost-model-inference-latency-94540cb170eb
+A Comparison of Decision Forest Inference Platforms from A Database Perspective, acessado em fevereiro 22, 2026, https://www.researchgate.net/publication/368393019_A_Comparison_of_Decision_Forest_Inference_Platforms_from_A_Database_Perspective
+model compiler for decision tree ensembles — Treelite 3.3.0 documentation, acessado em fevereiro 22, 2026, https://treelite.readthedocs.io/en/3.3.0/
+Hummingbird compiles trained ML models into tensor computation for faster inference. - GitHub, acessado em fevereiro 22, 2026, https://github.com/microsoft/hummingbird
+Transform your ML-model to Pytorch with Hummingbird - Maarten Grootendorst, acessado em fevereiro 22, 2026, https://www.maartengrootendorst.com/blog/humming/
+Gradient Boosting, Decision Trees and XGBoost with CUDA | NVIDIA Technical Blog, acessado em fevereiro 22, 2026, https://developer.nvidia.com/blog/gradient-boosting-decision-trees-xgboost-cuda/
+A Comparative Analysis of Modern AI Inference Engines for Optimized Cross-Platform Deployment: TensorRT, ONNX Runtime, and OpenVINO | Uplatz Blog, acessado em fevereiro 22, 2026, https://uplatz.com/blog/a-comparative-analysis-of-modern-ai-inference-engines-for-optimized-cross-platform-deployment-tensorrt-onnx-runtime-and-openvino/
+(PDF) Lightweight Deep Learning Models For Edge Devices—A Survey - ResearchGate, acessado em fevereiro 22, 2026, https://www.researchgate.net/publication/388967279_Lightweight_Deep_Learning_Models_For_Edge_Devices-A_Survey
+DistilBERT, ALBERT, and Beyond: Comparing Top Small Language Models - C# Corner, acessado em fevereiro 22, 2026, https://www.c-sharpcorner.com/article/distilbert-albert-and-beyond-comparing-top-small-language-models/
+A benchmark for ML inference latency on mobile devices - QED Research Group - University of Southern California, acessado em fevereiro 22, 2026, https://qed.usc.edu/paolieri/papers/2024_edgesys_mobile_inference_benchmark.pdf
+Comparative Analysis of Lightweight Deep Learning Models for Memory-Constrained Devices - arXiv, acessado em fevereiro 22, 2026, https://arxiv.org/html/2505.03303v1
+SqueezeBERT: What can computer vision teach NLP about efficient neural networks? - arXiv.org, acessado em fevereiro 22, 2026, https://arxiv.org/pdf/2006.11316
+Accelerating NLP Model Inferencing with DistillBERT & ONNX | by Kumar Abhishek | Expedia Group Technology | Medium, acessado em fevereiro 22, 2026, https://medium.com/expedia-group-tech/accelerating-nlp-model-inferencing-with-distillbert-onnx-23edd7e187b5
+Quantize ONNX models | onnxruntime, acessado em fevereiro 22, 2026, https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html
+When to use Pruning, Quantization , Distillation and others when optimizing speed, acessado em fevereiro 22, 2026, https://ai.stackexchange.com/questions/43054/when-to-use-pruning-quantization-distillation-and-others-when-optimizing-spee
+Quantized Training of Gradient Boosting Decision Trees - OpenReview, acessado em fevereiro 22, 2026, https://openreview.net/pdf?id=Cd-b50MZ0Gc
+Top 5 AI Model Optimization Techniques for Faster, Smarter Inference - NVIDIA Developer, acessado em fevereiro 22, 2026, https://developer.nvidia.com/blog/top-5-ai-model-optimization-techniques-for-faster-smarter-inference/
+[PDF] Quantized Training of Gradient Boosting Decision Trees - Semantic Scholar, acessado em fevereiro 22, 2026, https://www.semanticscholar.org/paper/Quantized-Training-of-Gradient-Boosting-Decision-Shi-Ke/9b468d856a57735b4da281c4ab9d13d25ccb2cf1
+Gradient Boosting Optimizations from Intel, acessado em fevereiro 22, 2026, https://www.intel.com/content/www/us/en/developer/tools/oneapi/optimization-for-xgboost.html
+ARCHIVED: Improve the Performance of XGBoost and LightGBM Inference - Intel, acessado em fevereiro 22, 2026, https://www.intel.com/content/www/us/en/developer/archive/benchmark/improve-performance-xgboost-lightgbm-inference.html
+Benchmarking Pruning and Quantization Techniques - Hasso-Plattner-Institut, acessado em fevereiro 22, 2026, https://hpi.de/oldsite/fileadmin/user_upload/fachgebiete/rabl/Theses/master_theses/master_thesis_final_Jonas_Schulze-1.pdf
+Light GBM model vs XGBoost Model Parameter Tuning and Examples, acessado em fevereiro 22, 2026, https://pyligent.github.io/2019-08-20-lightGBM_XGBoost/
+ICML Poster Compressing tree ensembles through Level-wise Optimization and Pruning, acessado em fevereiro 22, 2026, https://icml.cc/virtual/2025/poster/46237
+Serving Machine Learning Models at Scale: A Guide to Inference Optimization | Sealos Blog, acessado em fevereiro 22, 2026, https://sealos.io/blog/serving-machine-learning-models-at-scale-a-guide-to-inference-optimization
+Best Tools For ML Model Serving - Neptune.ai, acessado em fevereiro 22, 2026, https://neptune.ai/blog/ml-model-serving-best-tools
+[2602.00053] Scalable and Secure AI Inference in Healthcare: A Comparative Benchmarking of FastAPI and Triton Inference Server on Kubernetes - arXiv.org, acessado em fevereiro 22, 2026, https://www.arxiv.org/abs/2602.00053
+Benchmarking Note: Comparing FastAPI and Triton Inference Server for ML Model Deployment - ResearchGate, acessado em fevereiro 22, 2026, https://www.researchgate.net/publication/396146923_Benchmarking_Note_Comparing_FastAPI_and_Triton_Inference_Server_for_ML_Model_Deployment
+Scalable and Secure AI Inference in Healthcare: A Comparative Benchmarking of FastAPI and Triton Inference Server on Kubernetes - arXiv.org, acessado em fevereiro 22, 2026, https://arxiv.org/html/2602.00053v1
+BentoML vs Ray Serve vs Triton: Model Serving for AI Teams 2026 - Index.dev, acessado em fevereiro 22, 2026, https://www.index.dev/skill-vs-skill/ai-bentoml-vs-ray-serve-vs-triton
+The Ultimate Guide To ML Model Deployment In 2024 - ConsciousML, acessado em fevereiro 22, 2026, https://www.axelmendoza.com/posts/ml-model-deployment/
+Best Model Serving Runtimes To Build Optimized ML APIs - ConsciousML, acessado em fevereiro 22, 2026, https://www.axelmendoza.com/posts/best-model-serving-runtimes/
+(PDF) Benchmarking machine learning strategies for phase-field problems - ResearchGate, acessado em fevereiro 22, 2026, https://www.researchgate.net/publication/382017475_Benchmarking_machine_learning_strategies_for_phase-field_problems
+Accelerating Deep Learning Inference: A Comparative Analysis of Modern Acceleration Frameworks - MDPI, acessado em fevereiro 22, 2026, https://www.mdpi.com/2079-9292/14/15/2977
+P99 CONF: How to Measure Latency - YouTube, acessado em fevereiro 22, 2026, https://www.youtube.com/watch?v=m8nq3cbMgY4
+Benchmarking vLLM Inference Performance: Measuring Latency, Throughput, and More | by Doil Kim | Medium, acessado em fevereiro 22, 2026, https://medium.com/@kimdoil1211/benchmarking-vllm-inference-performance-measuring-latency-throughput-and-more-1dba830c5444
+MoE-Inference-Bench: Performance Evaluation of Mixture of Expert Large Language and Vision Models - arXiv, acessado em fevereiro 22, 2026, https://arxiv.org/html/2508.17467v1
+What Is P99 Latency? Understanding the 99th Percentile of Performance | Aerospike, acessado em fevereiro 22, 2026, https://aerospike.com/blog/what-is-p99-latency/
+How to Benchmark Real-Time Analytics for Low Latency, acessado em fevereiro 22, 2026, https://www.topanalyticstools.com/blog/how-to-benchmark-real-time-analytics-for-low-latency/
+AI Benchmarks Comparospm Across ML Frameworks? - Label Studio, acessado em fevereiro 22, 2026, https://labelstud.io/learningcenter/how-do-ai-benchmarks-compare-across-popular-machine-learning-frameworks/
+GDEV-AI: A Generalized Evaluation of Deep Learning Inference Scaling and Architectural Saturation - arXiv, acessado em fevereiro 22, 2026, https://arxiv.org/html/2602.16858v1
+Best Practices — NVIDIA TensorRT, acessado em fevereiro 22, 2026, https://docs.nvidia.com/deeplearning/tensorrt/latest/performance/best-practices.html
+Reducing Cold Start Latency for LLM Inference with NVIDIA Run:ai Model Streamer, acessado em fevereiro 22, 2026, https://developer.nvidia.com/blog/reducing-cold-start-latency-for-llm-inference-with-nvidia-runai-model-streamer/
+List of datasets for machine-learning research - Wikipedia, acessado em fevereiro 22, 2026, https://en.wikipedia.org/wiki/List_of_datasets_for_machine-learning_research
+asu-cactus/DFInferBench: A benchmark framework for decision forest inferences - GitHub, acessado em fevereiro 22, 2026, https://github.com/asu-cactus/DFInferBench
+Benchmark — treelite 0.2 documentation - Read the Docs, acessado em fevereiro 22, 2026, https://treelite.readthedocs.io/en/0.2/benchmark.html
+LLM Inference Optimization Techniques - Redwerk, acessado em fevereiro 22, 2026, https://redwerk.com/blog/llm-inference-optimization-techniques/
+Comparative Analysis of Machine Learning Models for Predicting Innovation Outcomes: An Applied AI Approach - MDPI, acessado em fevereiro 22, 2026, https://www.mdpi.com/2076-3417/15/7/3636

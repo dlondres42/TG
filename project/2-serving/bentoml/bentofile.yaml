@@ -1,0 +1,19 @@
+# BentoML build manifest. Used only if/when the bento is packaged with
+# `bentoml build`. The serving path used by Phase 2 is `bentoml serve` via the
+# Dockerfile entrypoint; this file is committed for completeness so a future
+# user can run `bentoml build && bentoml containerize` if desired.
+
+service: "service:TgService"
+labels:
+  project: tg
+  phase: "2B"
+include:
+  - "service.py"
+  - "batching.json"
+python:
+  requirements_txt: |
+    bentoml>=1.3,<2.0
+    onnxruntime>=1.18
+    numpy>=1.26,<3.0
+docker:
+  python_version: "3.11"

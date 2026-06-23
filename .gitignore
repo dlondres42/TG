@@ -1,0 +1,56 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# --- uv / venvs ---
+.venv/
+**/.venv/
+uv.lock
+
+# --- Data & artifacts (large; out-of-band or LFS) ---
+project/1-model/data/
+project/1-model/artifacts/*.onnx
+project/1-model/artifacts/*.ubj
+project/1-model/artifacts/*.parquet
+project/1-model/artifacts/metrics.json
+
+# --- Bench results + generated targets (large / regenerable) ---
+project/3-bench/results/
+project/3-bench/results_windows_baseline/
+project/3-bench/results_no_cpu_snapshot/
+project/3-bench/layer3_with_cpu_logs/
+project/3-bench/targets/*.txt
+project/3-bench/targets/bodies.jsonl
+project/3-bench/targets/built/
+
+# --- LaTeX build artifacts (already present in pre_projeto/) ---
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.log
+*.out
+*.run.xml
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Local Claude settings (user-specific) ---
+.claude/settings.local.json
+
+# --- LaTeX build artifacts (PDFs and bbl/etc tracked selectively) ---
+thesis/monograph_ptbr/main.pdf
+thesis/monograph_ptbr/*.aux
+thesis/monograph_ptbr/*.bbl
+thesis/monograph_ptbr/*.blg
+thesis/monograph_ptbr/*.toc
+thesis/TG_tomas_Modelo_SBC/*.aux
+thesis/TG_tomas_Modelo_SBC/*.bbl
+thesis/TG_tomas_Modelo_SBC/*.blg
+thesis/TG_tomas_Modelo_SBC/*.log
+thesis/TG_tomas_Modelo_SBC/main.pdf

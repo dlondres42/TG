@@ -1,0 +1,117 @@
+\section{Fundamentação teórica}
+
+\subsection{Inferência de ensembles de árvores em ONNX Runtime}
+
+XGBoost \cite{chen2016} é um algoritmo de \textit{gradient boosting} para
+\textit{ensembles} de árvores de decisão que domina problemas de classificação
+e regressão sobre dados tabulares densos, frequentemente superando redes
+neurais em conjuntos representativos \cite{grinsztajn2022}. O modelo treinado
+neste trabalho contém 500 árvores binárias de profundidade máxima 8, ou seja,
+aproximadamente 128 mil nós e até 4 mil comparações por inferência sobre uma
+única linha.
+
+Para servir o modelo em produção, ele é exportado para o formato ONNX
+\cite{onnxruntime2024}, que define o operador
+\textit{TreeEnsembleClassifier} sob o domínio \texttt{ai.onnx.ml}. O operador
+recebe um tensor de \textit{features} de forma $[N, 28]$ em
+\texttt{float32}, percorre cada árvore de forma independente e acumula as
+contribuições das folhas, produzindo um tensor de probabilidades de forma
+$[N, 2]$ \cite{onnx_treeensemble}. A implementação no ONNX Runtime usa um
+arranjo plano de nós, paralelizando entre árvores via \textit{thread pool}
+sempre que \texttt{intra\_op\_num\_threads} é maior que um, e libera o
+\textit{Global Interpreter Lock} (GIL) durante a chamada nativa de
+\texttt{session.run}.
+
+O custo intrínseco da inferência depende portanto da profundidade média, do
+número de árvores, do tamanho do conjunto de trabalho na cache da CPU e da
+qualidade do preditor de saltos. Asadi et al. \cite{asadi2014} estabelecem
+um modelo no qual cada comparação custa de 2 a 5 nanossegundos em
+processadores modernos com arranjos amigáveis à predição de salto. Para o
+modelo aqui empregado, isso prediz um piso teórico entre 8 e 20
+microssegundos por inferência sobre uma linha. Sieboehm
+\cite{sieboehm2021} mediu o ONNX Runtime em um modelo \textit{LightGBM}
+comparável, em \textit{hardware} Intel Haswell, obtendo 11,00 microssegundos
+por linha, o que corrobora a ordem de grandeza esperada. A consequência
+prática é que, para esse regime, o sobrecusto da camada de \textit{serving}
+ao redor da inferência (parsing, despacho HTTP, marshaling de tensores)
+domina a latência ponta a ponta.
+
+\subsection{Latência de cauda e Coordinated Omission}
+
+A literatura de sistemas estabelece o percentil 99 (P99) da distribuição de
+latência como a métrica operacional dominante para serviços interativos,
+porque a mediana subestima as anomalias raras que afetam a experiência do
+usuário \cite{dean2013}. Em uma distribuição típica de \textit{serving} sob
+carga concorrente, a cauda é dominada por pausas do \textit{garbage
+collector}, contenção de recursos, \textit{cache misses} e variação de
+escalonamento, eventos que não desaparecem por aumento do número de
+amostras e que tendem a se amplificar quando o sistema se aproxima da
+saturação.
+
+Medir a cauda corretamente exige um gerador de carga de modelo aberto. Em um
+gerador de modelo fechado, cada nova requisição espera a resposta da
+anterior, de modo que quando o servidor engasga, a taxa de envio cai e a
+cauda observada subestima a cauda real, fenômeno descrito por Tene como
+\textit{Coordinated Omission} \cite{tene2015}. Em um gerador de modelo
+aberto, as requisições são despachadas a intervalos pré-definidos
+$1/\text{RPS}$, independentemente do número de requisições em voo. Quando o
+sistema se torna incapaz de atender à taxa de chegada, a discrepância
+aparece como crescimento de fila e latência, e não como redução da carga
+injetada. Vegeta \cite{vegeta2024} é um gerador de modelo aberto que registra
+a latência percebida pelo cliente por requisição em formato binário, do qual
+percentis arbitrários, função de distribuição complementar acumulada (CCDF)
+e vazão útil sob SLA podem ser extraídos em pós-processamento.
+
+\subsection{Adaptive batching e o modelo de custo do despacho}
+
+\textit{Adaptive batching} é uma técnica em que requisições concorrentes que
+chegam ao servidor são agrupadas em lotes antes da inferência, com o objetivo
+de amortizar um custo fixo por chamada $k$ entre $B$ requisições. O ganho
+líquido por requisição é aproximadamente $k(1 - 1/B) - \tau_{\text{wait}}$,
+onde $\tau_{\text{wait}}$ é o tempo médio que cada requisição passa
+aguardando o fechamento do lote. Para modelos com $k$ elevado, como redes
+profundas em GPU (lançamento de \textit{kernel}, materialização de tensores,
+\textit{boilerplate} de \textit{Python}), o lote de $B = 16$ pode reduzir o
+custo por requisição em uma ordem de grandeza
+\cite{nakandala2020}. Para inferência de árvores em CPU, onde $k$ é da ordem
+de 14 microssegundos, o sobrecusto de fila e do mecanismo de despacho
+sobrepuja qualquer amortização possível.
+
+O \textit{dispatcher} do BentoML é implementado como uma única corrotina
+\texttt{controller()} por \textit{worker} \cite{bentoml_dispatcher}. Essa
+corrotina drena a fila de requisições, decide o momento do disparo de cada
+lote a partir de estimadores de profundidade de fila e do tempo de
+serviço, e roteia os resultados de volta para as \textit{futures}
+correspondentes. O parâmetro \texttt{max\_latency\_ms} é interpretado como um
+prazo rígido para a conclusão da requisição: quando a latência estimada
+ultrapassa o limite, a requisição é cancelada e a resposta retorna como HTTP
+503. Essa interpretação difere da intuição de janela de espera a ser
+minimizada e tem consequências diretas para a configuração do servidor sob
+carga.
+
+\subsection{Métodos estatísticos para comparação entre pipelines}
+
+Cada célula da varredura matricial é executada três vezes, e as métricas
+reportadas no nível da célula são as medianas entre as repetições. Para
+acompanhar a variabilidade entre repetições, dois resumos são computados.
+O primeiro é o coeficiente de variação $\text{CoV} = \sigma/\mu$, calculado
+sobre as três medidas de P50, P95 e P99, e usado como indicador de
+estabilidade entre execuções. O segundo é o intervalo de confiança bootstrap
+de 95\% sobre cada percentil reportado, obtido por reamostragem com
+reposição de 1.000 réplicas das três medidas e tomando os quantis 2,5\% e
+97,5\% da distribuição resultante \cite{efron1979}. Com $n = 3$ repetições os
+intervalos são largos em termos absolutos, e por isso as comparações
+entre pipelines são apoiadas pela magnitude da diferença, não pela estreitez
+dos intervalos.
+
+Como o BentoML descarta requisições por prazo expirado (HTTP 503) enquanto
+o FastAPI as enfileira como latência adicional, comparar taxas de erro
+diretamente seria injusto: um 503 em 5\,ms e uma resposta 200 em 2\,s sob
+um SLA de 50\,ms são ambos falhas operacionais idênticas do ponto de vista
+do consumidor. A métrica adotada para a comparação principal é a vazão útil
+sob SLA, definida como a fração de requisições oferecidas que retornaram
+status 2xx com latência menor ou igual a um limite (50 ou 100\,ms), divida
+pelo total oferecido. Essa formulação trata os dois modos de falha de forma
+simétrica e produz uma única figura que pode ser comparada entre pipelines
+e células.
+

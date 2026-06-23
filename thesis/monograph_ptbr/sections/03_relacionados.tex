@@ -1,0 +1,85 @@
+\section{Trabalhos relacionados}
+
+A literatura sobre inferência de modelos de \textit{machine learning} se
+organiza em duas vertentes que este trabalho conecta: comparações entre
+motores de inferência para \textit{ensembles} de árvores e comparações
+entre plataformas de \textit{serving} sob carga concorrente. Cada vertente tem
+contribuições maduras, mas tipicamente operadas em isolamento. A combinação
+das duas, em particular sob protocolo de medição de modelo aberto, recebe
+menos atenção empírica do que mereceria.
+
+\subsection{Plataformas de inferência para ensembles de árvores}
+
+Diversos trabalhos investigam o desempenho de motores especializados em
+\textit{ensembles} de árvores de decisão. Hummingbird \cite{nakandala2020}
+propõe traduzir o percurso condicional das árvores em operações de
+multiplicação de matrizes (GEMM), permitindo execução em \textit{hardware}
+de aceleração tensorial; o trabalho reporta uma faixa de latência da ordem
+de centenas de microssegundos por linha em modelos com milhares de árvores,
+com o sobrecusto de tensorização incluído na medida. Treelite
+\cite{cho2018} compila o \textit{ensemble} para código C com dicas explícitas
+de predição de salto, atingindo cerca de 28 microssegundos por linha em
+\textit{hardware} Haswell. lleaves \cite{sieboehm2021} estende a ideia
+empregando o compilador LLVM e atinge 9,6 microssegundos por linha no
+mesmo \textit{benchmark}; no mesmo experimento, o ONNX Runtime nativo
+foi medido em 11,0 microssegundos por linha, validando que a faixa de
+poucas dezenas de microssegundos é alcançável sem compilação especializada.
+
+Trabalhos voltados a recuperação de informação propõem estruturas de
+travessia ainda mais agressivas. QuickScorer \cite{lucchese2015} usa
+representações por vetor de bits para avaliar 1.000 árvores de profundidade
+8 em 2,6 a 9 microssegundos por documento em processadores Xeon.
+RapidScorer \cite{ye2018} estende a ideia maximizando compactação a fim
+de explorar paralelismo SIMD, reportando latência da ordem de microssegundos
+para tamanhos de \textit{ensemble} comparáveis. Por fim, Ye et al.
+\cite{asadi2024} comparam Treelite, Hummingbird, TensorFlow Decision
+Forests e ONNX Runtime sob a perspectiva de sistemas de banco de dados,
+confirmando que ONNX Runtime é competitivo em lotes pequenos e que a
+faixa de poucas dezenas de microssegundos por linha é o regime esperado para
+modelos de tamanho moderado em CPU.
+
+A limitação compartilhada por essa vertente é que todos esses trabalhos
+medem o motor de inferência em isolamento, em laços apertados de
+\textit{Python} com \textit{cache} quente e tensores pré-construídos. Eles
+estabelecem o piso teórico da inferência, mas não capturam o sobrecusto da
+camada de \textit{serving} ao redor dela: \textit{parsing} de requisições
+HTTP, despacho de eventos do \textit{framework} web, formação de lotes em
+nível de aplicação, agendamento de \textit{threads} e contenção de
+\textit{thread pool}.
+
+\subsection{Comparações entre plataformas de serving para ML}
+
+Na vertente de plataformas de \textit{serving}, há comparações entre FastAPI,
+Triton Inference Server, TensorFlow Serving e TorchServe. Zaharia et al.
+\cite{zaharia2024} comparam FastAPI e Triton sobre Kubernetes em uma
+aplicação de inferência médica e reportam diferenças em vazão e latência,
+mas o protocolo adotado é de modelo fechado e a métrica de comparação se
+apoia em médias e erros, ignorando a cauda. A documentação do BentoML
+\cite{bentoml_dispatcher} descreve o desenho do \textit{dispatcher} de
+\textit{adaptive batching}, mas não publica microbenchmarks isolados do
+mecanismo de fila e despacho, deixando ao usuário a tarefa de calibrar
+empiricamente os parâmetros sob a sua carga real.
+
+A comparação entre Triton, TensorFlow Serving e TorchServe é predominante
+em literatura voltada a redes profundas em GPU, onde o custo fixo por
+chamada é elevado o suficiente para que o lote amortize-se. Este trabalho
+deliberadamente fica fora desse regime, optando por um modelo tabular barato
+em CPU para isolar o trade-off oposto: onde a infraestrutura de \textit{serving}
+domina o tempo de resposta e onde a formação de lotes é mais cara do que a
+inferência que ela tentaria amortizar.
+
+\subsection{Posicionamento deste trabalho}
+
+A contribuição empírica desta monografia preenche a lacuna entre as duas
+vertentes. O motor de inferência usado (ONNX Runtime sobre o operador
+\textit{TreeEnsembleClassifier}) é o mesmo medido por Sieboehm
+\cite{sieboehm2021} e por Ye et al. \cite{asadi2024}, com piso de
+inferência consistente com seus números. Sobre esse piso, a varredura de
+modelo aberto via Vegeta \cite{vegeta2024} e a decomposição em três camadas
+permitem atribuir cada milissegundo medido a um componente específico da
+plataforma, e a coleta direta de utilização de CPU durante o ataque identifica
+o gargalo arquitetural do \textit{dispatcher}. Nenhum dos trabalhos
+revisados executa essa combinação de protocolo de modelo aberto, decomposição
+de orçamento de latência e evidência de mecanismo em CPU para o regime
+tabular barato.
+
