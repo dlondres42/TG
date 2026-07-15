@@ -190,30 +190,49 @@ _VARIANT_STYLE = {
 
 def _per_cell_plot(df: pd.DataFrame, metric_col: str, ylabel: str, title: str, fname: str,
                    ylog: bool = False, ylim: tuple | None = None) -> None:
+    """2x2 grid (one panel per (workers, threads) cell), single shared legend.
+
+    Sized for A4 print at \\textwidth: each panel stays >= 7 cm wide after
+    LaTeX scaling, with fonts that survive the reduction.
+    """
     plt = _mpl()
-    plt.rcParams.update({"font.size": 11, "axes.labelsize": 12, "axes.titlesize": 12,
-                         "legend.fontsize": 9})
+    plt.rcParams.update({"font.size": 13, "axes.labelsize": 14, "axes.titlesize": 14,
+                         "legend.fontsize": 12, "xtick.labelsize": 12, "ytick.labelsize": 12})
     cells = sorted({(w, t) for w, t in zip(df["workers"], df["threads"])})
-    n = len(cells)
-    fig, axes = plt.subplots(1, n, figsize=(4.2 * n, 4.2), squeeze=False, sharey=True)
-    for ax, (w, t) in zip(axes[0], cells):
+    ncols = 2
+    nrows = (len(cells) + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(11, 4.6 * nrows),
+                             squeeze=False, sharey=True, sharex=True)
+    flat = axes.ravel()
+    for ax in flat[len(cells):]:
+        ax.set_visible(False)
+    for ax, (w, t) in zip(flat, cells):
         sub = df[(df["workers"] == w) & (df["threads"] == t)]
         for variant in sorted(sub["variant"].unique()):
             g = sub[sub["variant"] == variant].groupby("rps_target")[metric_col].median()
             style = _VARIANT_STYLE.get(variant, dict(marker="o"))
+            style = {**style, "lw": max(style.get("lw", 2.0), 2.2),
+                     "ms": max(style.get("ms", 7), 8)}
             ax.plot(g.index, g.values, label=variant, **style)
         ax.set_title(f"workers={w}, threads={t}")
-        ax.set_xlabel("target RPS")
-        ax.set_ylabel(ylabel)
         ax.grid(True, which="both", alpha=0.3)
         if ylog:
             ax.set_yscale("log")
         if ylim is not None:
             ax.set_ylim(ylim)
-        ax.legend(loc="best", framealpha=0.85)
-    fig.suptitle(title)
-    fig.tight_layout()
-    fig.savefig(FIGURES / fname, dpi=120)
+    # Axis labels only on the outer edge (sharex/sharey keep panels aligned).
+    for ax in axes[-1, :]:
+        ax.set_xlabel("RPS alvo")
+    for ax in axes[:, 0]:
+        ax.set_ylabel(ylabel)
+    # One legend for the whole figure instead of four duplicates.
+    handles, labels = flat[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=min(len(labels), 4),
+               framealpha=0.9, bbox_to_anchor=(0.5, -0.01))
+    if title:
+        fig.suptitle(title, y=0.995)
+    fig.tight_layout(rect=(0, 0.05, 1, 0.98 if title else 1.0))
+    fig.savefig(FIGURES / fname, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -221,9 +240,9 @@ def fig_inflection(df: pd.DataFrame) -> None:
     if df.empty:
         return
     # P99 spans 1ms (FastAPI) to >1000ms (BentoML saturation) — log scale needed.
-    _per_cell_plot(df, "p99_ms", "P99 latency (ms, log)",
-                   "P99 vs RPS — FastAPI stays flat, BentoML grows hyperbolically",
-                   "inflection.png", ylog=True)
+    # Title left empty: the thesis/report caption carries the message.
+    _per_cell_plot(df, "p99_ms", "latência P99 (ms, log)",
+                   "", "inflection.png", ylog=True)
 
 
 def fig_jitter(df: pd.DataFrame) -> None:
@@ -233,17 +252,75 @@ def fig_jitter(df: pd.DataFrame) -> None:
     df["jitter"] = df["p99_ms"] / df["p50_ms"]
     # Jitter spans 2x (FastAPI) to 100x (BentoML at high load) — log scale clearer.
     _per_cell_plot(df, "jitter", "P99 / P50 (log)",
-                   "Jitter (P99/P50) — tail variability vs RPS",
-                   "jitter.png", ylog=True)
+                   "", "jitter.png", ylog=True)
 
 
 def fig_goodput(df: pd.DataFrame, sla_col: str, sla_ms: int) -> None:
     if df.empty or sla_col not in df.columns:
         return
     # Goodput is a fraction in [0,1] — fixed linear scale lets cliffs be read at a glance.
-    _per_cell_plot(df, sla_col, f"goodput @ {sla_ms} ms (fraction)",
-                   f"Goodput within a {sla_ms} ms SLA — fairness-corrected headline",
-                   f"goodput_{sla_ms}ms_vs_rps.png", ylim=(-0.02, 1.05))
+    _per_cell_plot(df, sla_col, f"vazão útil @ {sla_ms} ms (fração)",
+                   "", f"goodput_{sla_ms}ms_vs_rps.png", ylim=(-0.02, 1.05))
+
+
+def fig_replicate_box(df: pd.DataFrame) -> None:
+    """Boxplot of the three replicate P99 values per cell.
+
+    Raw points are overlaid on each box so no reader mistakes n=3 for a
+    larger sample; the box conveys median + spread, the dots the truth.
+    """
+    if df.empty:
+        return
+    plt = _mpl()
+    plt.rcParams.update({"font.size": 13, "axes.labelsize": 14, "axes.titlesize": 14,
+                         "legend.fontsize": 12, "xtick.labelsize": 12, "ytick.labelsize": 12})
+    from matplotlib.patches import Patch
+    variants = [v for v in _VARIANT_STYLE if v in set(df["variant"])]
+    rps_levels = sorted(df["rps_target"].unique())
+    cells = sorted({(w, t) for w, t in zip(df["workers"], df["threads"])})
+    ncols = 2
+    nrows = (len(cells) + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(11, 4.6 * nrows),
+                             squeeze=False, sharey=True, sharex=True)
+    flat = axes.ravel()
+    for ax in flat[len(cells):]:
+        ax.set_visible(False)
+    width = 0.19
+    offsets = {v: (i - (len(variants) - 1) / 2) * width for i, v in enumerate(variants)}
+    for ax, (w, t) in zip(flat, cells):
+        sub = df[(df["workers"] == w) & (df["threads"] == t)]
+        for variant in variants:
+            color = _VARIANT_STYLE[variant]["color"]
+            for xi, rps in enumerate(rps_levels):
+                vals = sub[(sub["variant"] == variant)
+                           & (sub["rps_target"] == rps)]["p99_ms"].dropna().values
+                if len(vals) == 0:
+                    continue
+                pos = xi + offsets[variant]
+                ax.boxplot([vals], positions=[pos], widths=width * 0.85,
+                           patch_artist=True, showfliers=False,
+                           boxprops=dict(facecolor=color, alpha=0.35, edgecolor=color, lw=1.2),
+                           whiskerprops=dict(color=color, lw=1.2),
+                           capprops=dict(color=color, lw=1.2),
+                           medianprops=dict(color=color, lw=1.8))
+                ax.plot([pos] * len(vals), vals, linestyle="none", marker="o",
+                        ms=3.5, color=color, zorder=3)
+        ax.set_title(f"workers={w}, threads={t}")
+        ax.set_yscale("log")
+        ax.grid(True, which="both", axis="y", alpha=0.3)
+        ax.set_xticks(range(len(rps_levels)))
+        ax.set_xticklabels([str(int(r)) for r in rps_levels])
+    for ax in axes[-1, :]:
+        ax.set_xlabel("RPS alvo")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("latência P99 (ms, log)")
+    handles = [Patch(facecolor=_VARIANT_STYLE[v]["color"], alpha=0.5,
+                     edgecolor=_VARIANT_STYLE[v]["color"], label=v) for v in variants]
+    fig.legend(handles=handles, loc="lower center", ncol=min(len(variants), 4),
+               framealpha=0.9, bbox_to_anchor=(0.5, -0.01))
+    fig.tight_layout(rect=(0, 0.05, 1, 1.0))
+    fig.savefig(FIGURES / "replicate_box_p99.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
 
 
 # --------------------------------------------------------------------------- #
@@ -397,6 +474,7 @@ def main() -> int:
         print(f"[analyze] wrote summary.csv ({len(df)} runs, variants={sorted(df['variant'].unique())})")
         fig_inflection(df)
         fig_jitter(df)
+        fig_replicate_box(df)
         for sla in args.sla_ms:
             col = f"goodput_{sla}ms"
             if col in df.columns:

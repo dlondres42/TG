@@ -95,16 +95,21 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
 # Figures
 # --------------------------------------------------------------------------- #
 def fig_cpu_bar(agg: pd.DataFrame) -> None:
-    """Grouped bar chart: mean CPU per (cell, variant) with 95% CI error bars."""
+    """Grouped bar chart: mean CPU per (cell, variant) with 95% CI error bars.
+
+    Sized for A4 print at \\textwidth (thesis): fixed 13x6.5 canvas and >=13pt
+    fonts so labels survive the LaTeX reduction.
+    """
     plt = _mpl()
-    plt.rcParams.update({"font.size": 10, "axes.labelsize": 11, "axes.titlesize": 12})
+    plt.rcParams.update({"font.size": 13, "axes.labelsize": 14, "axes.titlesize": 14,
+                         "legend.fontsize": 13, "xtick.labelsize": 12, "ytick.labelsize": 12})
     cells = sorted(agg["cell"].unique())
     variants = [v for v in VARIANT_ORDER if v in agg["variant"].unique()]
     n_var = len(variants)
     x = np.arange(len(cells))
     width = 0.8 / max(n_var, 1)
 
-    fig, ax = plt.subplots(figsize=(max(10, 0.5 * len(cells) * n_var), 5.0))
+    fig, ax = plt.subplots(figsize=(13, 6.5))
     for i, variant in enumerate(variants):
         sub = agg[agg["variant"] == variant].set_index("cell").reindex(cells)
         med = sub["cpu_mean_pct_median"].to_numpy()
@@ -116,18 +121,17 @@ def fig_cpu_bar(agg: pd.DataFrame) -> None:
                width, label=variant, color=VARIANT_COLOR.get(variant, "#888"),
                yerr=[yerr_lo, yerr_hi], capsize=2, error_kw={"lw": 0.8})
     # 100% / 200% reference lines (1 core / 2 cores given --cpus=2)
-    ax.axhline(100, color="grey", lw=0.7, ls="--", alpha=0.6)
-    ax.axhline(200, color="grey", lw=0.7, ls="--", alpha=0.6)
-    ax.text(len(cells) - 0.5, 102, "1 core saturated", fontsize=8, ha="right", color="grey")
-    ax.text(len(cells) - 0.5, 202, "2 cores saturated (container cap)", fontsize=8, ha="right", color="grey")
+    ax.axhline(100, color="grey", lw=0.9, ls="--", alpha=0.6)
+    ax.axhline(200, color="grey", lw=0.9, ls="--", alpha=0.6)
+    ax.text(len(cells) - 0.5, 103, "1 núcleo saturado", fontsize=11, ha="right", color="grey")
+    ax.text(len(cells) - 0.5, 203, "2 núcleos saturados (limite do contêiner)", fontsize=11, ha="right", color="grey")
     ax.set_xticks(x)
     ax.set_xticklabels(cells, rotation=35, ha="right")
-    ax.set_ylabel("mean CPU% during attack (95% CI)")
-    ax.set_title("Server-side CPU per cell — FastAPI uses less CPU than BentoML at every comparable RPS")
+    ax.set_ylabel("CPU média durante o ataque (%, IC 95%)")
     ax.grid(True, axis="y", alpha=0.3)
     ax.legend(loc="upper left", framealpha=0.9, ncol=2)
     fig.tight_layout()
-    fig.savefig(FIGURES / "cpu_bar.png", dpi=120)
+    fig.savefig(FIGURES / "cpu_bar.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -135,8 +139,9 @@ def fig_cpu_vs_p99(agg: pd.DataFrame) -> None:
     """Scatter: x = mean CPU%, y = P99. The "BentoML uses more CPU AND has worse
     P99" finding is a single quadrant of this plot."""
     plt = _mpl()
-    plt.rcParams.update({"font.size": 10, "axes.labelsize": 11, "axes.titlesize": 12})
-    fig, ax = plt.subplots(figsize=(7.5, 5.5))
+    plt.rcParams.update({"font.size": 13, "axes.labelsize": 14, "axes.titlesize": 14,
+                         "legend.fontsize": 13, "xtick.labelsize": 12, "ytick.labelsize": 12})
+    fig, ax = plt.subplots(figsize=(9.5, 7))
     for variant in [v for v in VARIANT_ORDER if v in agg["variant"].unique()]:
         sub = agg[agg["variant"] == variant]
         # Cap P99 at 5000ms so the collapse points don't squash the rest.
@@ -148,15 +153,14 @@ def fig_cpu_vs_p99(agg: pd.DataFrame) -> None:
                    alpha=0.85, edgecolor="black", lw=0.5, label=variant)
         for _, r in sub.iterrows():
             ax.annotate(_cell_key(r), (r["cpu_mean_pct_median"], min(r["p99_ms_median"], 5000)),
-                        fontsize=7, alpha=0.6, xytext=(4, 2), textcoords="offset points")
+                        fontsize=9, alpha=0.65, xytext=(5, 3), textcoords="offset points")
     ax.set_yscale("log")
-    ax.set_xlabel("mean CPU% during attack")
-    ax.set_ylabel("P99 latency (ms, log; capped at 5000 ms)")
-    ax.set_title("CPU vs P99 — BentoML lives in the high-CPU, high-P99 quadrant")
+    ax.set_xlabel("CPU média durante o ataque (%)")
+    ax.set_ylabel("latência P99 (ms, log; teto em 5000 ms)")
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(loc="upper left", framealpha=0.9)
     fig.tight_layout()
-    fig.savefig(FIGURES / "cpu_vs_p99.png", dpi=120)
+    fig.savefig(FIGURES / "cpu_vs_p99.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -216,9 +220,10 @@ def fig_cpu_timeseries_collapse(picks: dict[str, Path]) -> None:
     if not picks:
         return
     plt = _mpl()
-    plt.rcParams.update({"font.size": 10, "axes.labelsize": 11, "axes.titlesize": 12})
+    plt.rcParams.update({"font.size": 13, "axes.labelsize": 14, "axes.titlesize": 13,
+                         "xtick.labelsize": 12, "ytick.labelsize": 12})
     n = len(picks)
-    fig, axes = plt.subplots(n, 1, figsize=(9, 2.2 * n), sharex=True, squeeze=False)
+    fig, axes = plt.subplots(n, 1, figsize=(11, 2.6 * n), sharex=True, squeeze=False)
     for ax, (label, path) in zip(axes[:, 0], picks.items()):
         try:
             df = pd.read_csv(path)
@@ -234,11 +239,9 @@ def fig_cpu_timeseries_collapse(picks: dict[str, Path]) -> None:
         ax.set_ylabel("CPU%")
         ax.set_title(label, loc="left", fontsize=10)
         ax.grid(True, alpha=0.3)
-    axes[-1, 0].set_xlabel("seconds since attack start")
-    fig.suptitle("CPU% during the 45 s attack — onset of dispatcher saturation",
-                 y=1.0, fontsize=12)
+    axes[-1, 0].set_xlabel("segundos desde o início do ataque")
     fig.tight_layout()
-    fig.savefig(FIGURES / "cpu_timeseries_collapse.png", dpi=120)
+    fig.savefig(FIGURES / "cpu_timeseries_collapse.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
